@@ -17,7 +17,7 @@ void print_hex(const unsigned char *data, size_t length) {
 
 int main() {
     int socket_file_descriptor;
-    char buffer[1024];
+    unsigned char buffer[1024];
     const char *hello = "Hello from UDP server!";
     struct sockaddr_in server_address, client_address;
 
@@ -41,7 +41,12 @@ int main() {
     socklen_t len = sizeof(client_address);
     int n = recvfrom(socket_file_descriptor, (char *)buffer, 1024, MSG_WAITALL, (struct sockaddr *) &client_address, &len);
 	buffer[n] = '\0';
-    printf("Client : %s\n", buffer);
+    printf("Client : %c\n", buffer[15]);
+    
+    printf("Length of dname: %d\n", buffer[12]); // can access individual values!!!
+    for(int i = 13; i < 20; i++) {
+        printf("%c", buffer[i]);
+    } printf("\n");
 
     print_hex(buffer, n);
 
@@ -55,7 +60,7 @@ int main() {
     response[response_len++] = buffer[1];
 
     // 2. Flags: Response, Authoritative, No Error (QR=1, AA=1, NOERROR=0)
-    response[response_len++] = 0x81;  // 0x81 = QR (response) + AA (authoritative)
+    response[response_len++] = 0x80;  // 0x81 = QR (response) + AA (authoritative)
     response[response_len++] = 0x80;  // 0x80 = NOERROR (status)
 
     // 3. Number of Questions (1)
