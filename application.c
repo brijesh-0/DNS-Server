@@ -7,7 +7,7 @@
 
 int main() {
 	int socket_file_descriptor;
-	unsigned char buffer[513];
+	uint8_t buffer[513];
 	struct sockaddr_in server_address, client_address;
 
 	if((socket_file_descriptor = socket(AF_INET, SOCK_DGRAM, 0) != 0)) {
@@ -31,6 +31,7 @@ int main() {
 	buffer[nbytes] = '\0';
 
 	// Handle query.c
+	handle_query(buffer); // will need a struct to return two values position and the response packet
 
 	// respond
 

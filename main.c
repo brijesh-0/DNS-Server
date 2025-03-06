@@ -7,9 +7,11 @@
 #include <netinet/in.h>
 
 // Prints char as hex to avoid non printable charecters
-void print_hex(const unsigned char *data, size_t length) {
+void print_hex(const uint8_t *data, size_t length) {
     for (size_t i = 0; i < length; i++) {
-        printf("%02x ", data[i]);
+        uint8_t ch = data[i];
+        // printf("%02x ", data[i]);
+        printf("%d ", (int)data[i]);
     }
     printf("\nLength: %zd", length);
     printf("\n\n");
@@ -17,7 +19,7 @@ void print_hex(const unsigned char *data, size_t length) {
 
 int main() {
     int socket_file_descriptor;
-    unsigned char buffer[1024];
+    uint8_t buffer[512];
     const char *hello = "Hello from UDP server!";
     struct sockaddr_in server_address, client_address;
 
@@ -41,8 +43,8 @@ int main() {
     socklen_t len = sizeof(client_address);
     int n = recvfrom(socket_file_descriptor, (char *)buffer, 1024, MSG_WAITALL, (struct sockaddr *) &client_address, &len);
 	buffer[n] = '\0';
-    printf("Client : %c\n", buffer[15]);
     
+    printf("Client : %c\n", buffer[15]);
     printf("Length of dname: %d\n", buffer[12]); // can access individual values!!!
     for(int i = 13; i < 20; i++) {
         printf("%c", buffer[i]);
@@ -78,6 +80,7 @@ int main() {
     // 6. Number of Additional Records (0)
     response[response_len++] = 0x00;
     response[response_len++] = 0x00;
+    // response_len += 2;
 
     // 7. Question Section (query for example.com)
     //    Domain Name: "example.com" as a sequence of labels
