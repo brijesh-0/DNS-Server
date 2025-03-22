@@ -52,3 +52,7 @@ Mkfile.old
 dkms.conf
 
 .vscode
+*.db
+
+# binary file
+dns_server

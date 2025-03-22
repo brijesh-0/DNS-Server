@@ -2,146 +2,80 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <arpa/inet.h>
-#include <netinet/in.h>
+#include <unistd.h>
+#include "shared.h"
+#include "query.h"
+#include "response.h"
+#include "database.h"
 
-// Prints char as hex to avoid non printable charecters
 void print_hex(const uint8_t *data, size_t length) {
     for (size_t i = 0; i < length; i++) {
-        uint8_t ch = data[i];
-        // printf("%02x ", data[i]);
-        printf("%d ", (int)data[i]);
+        printf("%02x ", data[i]);
     }
-    printf("\nLength: %zd", length);
-    printf("\n\n");
+    printf("\nLength: %zd\n\n", length);
 }
 
 int main() {
-    int socket_file_descriptor;
-    uint8_t buffer[512];
-    const char *hello = "Hello from UDP server!";
-    struct sockaddr_in server_address, client_address;
+    // Initialize database
+    if (init_dns_database() != 0) {
+        fprintf(stderr, "Failed to initialize database\n");
+        return EXIT_FAILURE;
+    }
 
-    if ((socket_file_descriptor = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    int socket_fd;
+    BytePacketBuffer buffer = { .position = 0 };
+    struct sockaddr_in server_addr, client_addr;
+
+    // Create UDP socket
+    if ((socket_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("Socket creation failed");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
-    memset(&server_address, 0, sizeof(server_address)); // make the memory address space of server address all 0s
-    memset(&client_address, 0, sizeof(client_address)); // make the memory address space of client address all 0s
+    // Initialize server address
+    memset(&server_addr, 0, sizeof(server_addr));
+    memset(&client_addr, 0, sizeof(client_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(5353);
 
-    server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = INADDR_ANY; // all addresses of localhost will be listened to
-    server_address.sin_port = htons(8080); // htons = host byte order to network byte order (TODO: write a note on this)
-
-    if(bind(socket_file_descriptor, (const struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
-        perror("bind failed");
-        exit(1);
+    // Bind socket
+    if (bind(socket_fd, (const struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Bind failed");
+        close(socket_fd);
+        exit(EXIT_FAILURE);
     }
 
-    socklen_t len = sizeof(client_address);
-    int n = recvfrom(socket_file_descriptor, (char *)buffer, 1024, MSG_WAITALL, (struct sockaddr *) &client_address, &len);
-	buffer[n] = '\0';
-    
-    printf("Client : %c\n", buffer[15]);
-    printf("Length of dname: %d\n", buffer[12]); // can access individual values!!!
-    for(int i = 13; i < 20; i++) {
-        printf("%c", buffer[i]);
-    } printf("\n");
+    printf("DNS server listening on port 53...\n");
 
-    print_hex(buffer, n);
+    while (1) {
+        socklen_t len = sizeof(client_addr);
+        // Receive DNS query
+        int n = recvfrom(socket_fd, buffer.buffer, sizeof(buffer.buffer), MSG_WAITALL,
+                         (struct sockaddr *)&client_addr, &len);
+        if (n < 0) {
+            perror("Receive failed");
+            continue;
+        }
+        buffer.position = 0;
 
-    // construct hard-coded response for example.com with IP 12.12.12.15
-    unsigned char response[1024];
-    int response_len = 0;
+        printf("Received query:\n");
+        print_hex(buffer.buffer, n);
 
-    // All values in Hex for now for print_hex
-    // 1. Transaction ID: Copy from the request
-    response[response_len++] = buffer[0];  // Transaction ID (2 bytes)
-    response[response_len++] = buffer[1];
+        // Process query and construct response
+        BytePacketBuffer response = { .position = 0 };
+        if (handle_query(&buffer, &response) == 0) {
+            // Send response
+            sendto(socket_fd, response.buffer, response.position, MSG_CONFIRM,
+                   (const struct sockaddr *)&client_addr, len);
+            printf("Response sent:\n");
+            print_hex(response.buffer, response.position);
+        } else {
+            printf("Failed to process query\n");
+        }
+    }
 
-    // 2. Flags: Response, Authoritative, No Error (QR=1, AA=1, NOERROR=0)
-    response[response_len++] = 0x80;  // 0x81 = QR (response) + AA (authoritative)
-    response[response_len++] = 0x80;  // 0x80 = NOERROR (status)
-
-    // 3. Number of Questions (1)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x01;  // 1 question
-
-    // 4. Number of Answers (1)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x01;  // 1 answer
-
-    // 5. Number of Authority Records (0)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x00;
-
-    // 6. Number of Additional Records (0)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x00;
-    // response_len += 2;
-
-    // 7. Question Section (query for example.com)
-    //    Domain Name: "example.com" as a sequence of labels
-    response[response_len++] = 0x07;  // Length of "example" = 7
-    response[response_len++] = 'e';
-    response[response_len++] = 'x';
-    response[response_len++] = 'a';
-    response[response_len++] = 'm';
-    response[response_len++] = 'p';
-    response[response_len++] = 'l';
-    response[response_len++] = 'e';
-
-    response[response_len++] = 0x03;  // Length of "com" = 3
-    response[response_len++] = 'c';
-    response[response_len++] = 'o';
-    response[response_len++] = 'm';
-
-    response[response_len++] = 0x00;  // End of domain name
-
-    // - Type (A record)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x01;  // Type A, IPv4 address
-
-    // - Class (IN, Internet)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x01;  // Class 'IN'
-
-    // 8. Answer Section with IP address 12.12.12.15
-    // - Name should be the same as the one recieved else it's be rejected by client.
-    response[response_len++] = 0xC0;
-    response[response_len++] = 0x0C;  // Pointer to name in question section
-
-    // - Type (A record)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x01;  // Type A (IPv4 address)
-
-    // - Class (IN, Internet)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x01;  // Class IN
-
-    // - TTL (Time to Live)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x00;  // TTL (0)
-    response[response_len++] = 0x00;
-    response[response_len++] = 0x0F;  // TTL (15 seconds)
-
-    // - Data Length 4 bytes for IPv4 address
-    response[response_len++] = 0x00;  // gap
-    response[response_len++] = 0x04;  // 4 bytes for IPv4 address
-
-    // - IP Address (12.12.12.15)
-    response[response_len++] = 0x0C;
-    response[response_len++] = 0x0C;
-    response[response_len++] = 0x0C;
-    response[response_len++] = 0x0F;  // 12.12.12.15
-
-    printf("\nResponse: \n");
-    print_hex(response, 53); // print the response to compare to query
-
-	sendto(socket_file_descriptor, (const char *)response, response_len, MSG_CONFIRM, (const struct sockaddr *)&client_address, len);
-	printf("\nMessage sent!\n");
-
-	return 0;
+    close(socket_fd);
+    return 0;
 }

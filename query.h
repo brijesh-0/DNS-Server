@@ -1,10 +1,8 @@
-#include <stdint.h> // uint8_t
-#include <stddef.h> // size_t
+#ifndef QUERY_H
+#define QUERY_H
 
-typedef struct BytePacketBuffer {
-	uint8_t buffer[512];
-	size_t position;
-}BytePacketBuffer;
+#include "shared.h"
 
-void step(BytePacketBuffer *bufferPacket, size_t step);
-void seek(BytePacketBuffer *bufferPacket, size_t seekPosition);
+int handle_query(BytePacketBuffer *query, BytePacketBuffer *response);
+
+#endif
